@@ -1,5 +1,5 @@
 /* @flow */
-import React, { Component } from 'react';
+import React, { Component, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   FlatList,
 } from 'react-native';
 
-import { Input, Button} from '@rneui/base';
+import { Gyroscope } from 'expo-sensors';
+
+import { Input, Button } from '@rneui/base';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import init from 'react_native_mqtt';
 
@@ -16,30 +18,37 @@ init({
   storageBackend: AsyncStorage,
   defaultExpires: 1000 * 3600 * 24,
   enableCache: true,
-  sync : {}
+  sync: {}
 });
 const options = {
   host: 'broker.emqx.io',
   port: 8083,
   path: '/testTopic',
-  id: 'id_' + parseInt(Math.random()*100000)
+  id: 'id_' + parseInt(Math.random() * 100000)
 };
 // 创建客户端实例
 client = new Paho.MQTT.Client(options.host, options.port, options.path);
 
 class App extends Component {
-  constructor(props){
+  constructor(props) {
     super(props)
-    this.state={
+    this.state = {
       topic: 'testTopic',
       subscribedTopic: '',
       message: '',
       messageList: [],
-      status: ''
+      status: '',
+      gyroscope:{
+        x:0,
+        y:0,
+        z:0
+      }
     };
     client.onConnectionLost = this.onConnectionLost;
     client.onMessageArrived = this.onMessageArrived;
   }
+
+
   // 连接成功
   onConnect = () => {
     console.log('onConnect');
@@ -66,13 +75,13 @@ class App extends Component {
     );
   }
   // 连接丢失
-  onConnectionLost=(responseObject)=>{
+  onConnectionLost = (responseObject) => {
     if (responseObject.errorCode !== 0) {
       console.log('onConnectionLost:' + responseObject.errorMessage);
     }
   }
   // 收到消息
-  onMessageArrived = (message )=> {
+  onMessageArrived = (message) => {
     console.log('onMessageArrived:' + message.payloadString);
     newmessageList = this.state.messageList;
     newmessageList.unshift(message.payloadString);
@@ -100,21 +109,23 @@ class App extends Component {
     this.setState({ message: text });
   }
   // 消息发布
-  sendMessage = () =>{
+  sendMessage = () => {
     var message = new Paho.MQTT.Message(options.id + ':' + this.state.message);
     message.destinationName = this.state.subscribedTopic;
     client.send(message);
   }
+
   renderRow = ({ item, index }) => {
+    
     idMessage = item.split(':');
     console.log('>>>ITEM', item);
-    return(
-      <View 
+    return (
+      <View
         style={[
           styles.componentMessage,
           idMessage[0] == options.id ?
             styles.myMessageComponent
-          :
+            :
             (idMessage.length == 1 ? styles.introMessage : styles.messageComponent),
         ]}
       >
@@ -126,7 +137,8 @@ class App extends Component {
   }
   _keyExtractor = (item, index) => item + index;
   render() {
-    const { status, messageList } = this.state;
+    const { status, messageList , gyroscope} = this.state;
+    
     return (
       <View style={styles.container}>
         <Text
@@ -136,7 +148,8 @@ class App extends Component {
             color: this.state.status === 'connected' ? 'green' : 'black'
           }}
         >
-          ClientID: {options.id}
+          ClientID: {options.id}{'\n'}
+          x :{gyroscope.x}
         </Text>
         {
           this.state.status === 'connected' ?
@@ -148,8 +161,8 @@ class App extends Component {
                   client.disconnect();
                   this.setState({ status: '', subscribedTopic: '' });
                 }}
-                buttonStyle={{ marginBottom:50, backgroundColor: '#397af8' }}
-                icon={{ name: 'lan-disconnect', type: 'material-community', color: 'white' }}
+                buttonStyle={{ marginBottom: 50, backgroundColor: '#397af8' }}
+
               />
               <View style={{ marginBottom: 30, alignItems: 'center' }}>
                 <Input
@@ -166,15 +179,15 @@ class App extends Component {
                       title='UNSUBSCRIBE'
                       onPress={this.unSubscribeTopic}
                       buttonStyle={{ backgroundColor: '#397af8' }}
-                      icon={{ name: 'link-variant-off', type: 'material-community', color: 'white' }}
+
                     />
-                  :
+                    :
                     <Button
                       type='solid'
                       title='SUBSCRIBE'
                       onPress={this.subscribeTopic}
                       buttonStyle={{ backgroundColor: '#397af8' }}
-                      icon={{ name: 'link-variant', type: 'material-community', color: 'white' }}
+
                       disabled={!this.state.topic || this.state.topic.match(/ /) ? true : false}
                     />
                 }
@@ -192,27 +205,27 @@ class App extends Component {
                       type='solid'
                       title='PUBLISH'
                       onPress={this.sendMessage}
-                      buttonStyle={{ backgroundColor: status === 'failed' ? 'red' : '#397af8' }}
-                      icon={{ name: 'send', color: 'white' }}
+                      buttonStyle={{ backgroundColor: this.state.status === 'failed' ? 'red' : '#397af8' }}
+
                       disabled={!this.state.message || this.state.message.match(/^[ ]*$/) ? true : false}
                     />
                   </View>
-                :
+                  :
                   null
               }
             </View>
-          :
+            :
             <Button
               type='solid'
               title='CONNECT'
               onPress={this.connect}
               buttonStyle={{
-                marginBottom:50,
-                backgroundColor: status === 'failed' ? 'red' : '#397af8'
+                marginBottom: 50,
+                backgroundColor: this.state.status === 'failed' ? 'red' : '#397af8'
               }}
-              icon={{ name: 'lan-connect', type: 'material-community', color: 'white' }}
-              loading={status === 'isFetching' ? true : false}
-              disabled={status === 'isFetching' ? true : false}
+
+              loading={this.state.status === 'isFetching' ? true : false}
+              disabled={this.state.status === 'isFetching' ? true : false}
             />
         }
         <View style={styles.messageBox}>
@@ -233,36 +246,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 70,
+    backgroundColor: '#ffffff'
   },
-  messageBox:{
+  messageBox: {
     margin: 16,
     flex: 1,
   },
-  myMessageComponent:{
+  myMessageComponent: {
     backgroundColor: '#000000',
     borderRadius: 3,
     padding: 5,
     marginBottom: 5,
   },
-  messageComponent:{
+  messageComponent: {
     marginBottom: 5,
     backgroundColor: '#0075e2',
     padding: 5,
     borderRadius: 3,
   },
-  introMessage:{
+  introMessage: {
   },
-  textInput:{
+  textInput: {
     height: 40,
     margin: 5,
     borderWidth: 1,
     padding: 5,
   },
-  textIntro:{
+  textIntro: {
     color: 'black',
     fontSize: 12,
   },
-  textMessage:{
+  textMessage: {
     color: 'white',
     fontSize: 16,
   },
